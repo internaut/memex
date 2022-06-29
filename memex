@@ -8,6 +8,7 @@
 
 IDENT=""        # set the identity (e-mail) used for encryption
 TMPDIR="$HOME"  # set the temporary folder
+EDIT="${EDITOR:-vim}"   # set your editor
 
 
 ### sub-routines ###
@@ -87,11 +88,11 @@ remember() {
     n_nontxt=`ls -1 "$folder" | grep -v '.txt$' | wc -l`
     
     if [[ -f $file ]] ; then
-	# there's a note for that date
+        # there's a note for that date
         echo "remember $1: $dateformatted"
         read
         if [[ $n_nontxt -gt 0 ]] ; then
-	    # there are attachments for that date
+            # there are attachments for that date
             xdg-open "$folder"
         fi
         less $file
@@ -154,15 +155,15 @@ decrypt() {
     final=`encrfilepath "$1"`
 
     if [[ -f "$final" ]] ; then
-	# encrypted file exists, decrypt it to temp. location
+        # encrypted file exists, decrypt it to temp. location
         echo "decrypting $final..."
     	mkdir `tmppath "$1"`
         gpg -d "$final" 2>/dev/null | tar -x -C $tmp || exit 1
     else
-	# encrypted file doesn't exist
+        # encrypted file doesn't exist
         final=`txtpath "$1"`
 	if [[ -f "$final" ]] ; then
-		# unencrypted note data exists, copy it to temp. location
+            # unencrypted note data exists, copy it to temp. location
 	        echo "using unencrypted file $final"
     		mkdir `tmppath "$1"`
         	cp "$final" "$tmp"
@@ -180,17 +181,17 @@ decrypt() {
 
 
 # no command or "write [date] [attach]":
-# create a new note for "date" or today (default)
+# create a new note or edit a note for "date" or today (default)
 # if "attach" is given, open folder to add attachment files
 if [[ $# -eq 0 || "$1" == "write" ]] ; then
     if [[ $# -gt 1 ]] ; then
-	# date is given
+        # date is given
         d=`date --date "$2" +%F` || exit 1
         if [[ $d == "" ]] ; then
             exit 1
         fi
     else
-	# no date is given, use today's date
+        # no date is given, use today's date
         d=`date +%F` || exit 1
     fi
     
@@ -209,16 +210,16 @@ if [[ $# -eq 0 || "$1" == "write" ]] ; then
     fi
     
     if [[ -f $txt ]] ; then
-	# there's already an unencrypted note existing, move it for editing
+        # there's already an unencrypted note existing, move it for editing
         mv "$txt" "$tmptxt"
     elif [[ -f $enc ]] ; then
-	# there's already encrypted data existing, decrypt it for editing
+        # there's already encrypted data existing, decrypt it for editing
         echo "decrypting $enc..."
         gpg -d "$enc" 2>/dev/null | tar -x -C $tmp || exit 1
     fi
     
     # edit the note or create a new note for that date
-    vim `tmptxtpath "$d"`
+    "$EDIT" `tmptxtpath "$d"`
 
     # encrypt the note's data
     encrypt $d
@@ -229,10 +230,10 @@ fi
 # else read notes for a sequence of past dates. 
 if [[ "$1" == "read" ]] ; then
     if [[ $# -eq 2 ]] ; then
-	# read note at given date
+        # read note at given date
         remember "$2"
     else
-	# read notes for a sequence of past dates
+        # read notes for a sequence of past dates
         remember "yesterday"
         remember "1 week ago"
         remember "2 week ago"
@@ -267,24 +268,23 @@ fi
 # "search <pattern>" command. search (encrypted) notes for a given grep pattern.
 if [[ $# -eq 2 && "$1" == "search" ]] ; then
     for d in `ls memexdb/`; do
-	# iterate through dates $d
-
+        # iterate through dates $d
         txt=`txtpath $d`
         enc=`encrfilepath $d`
         result=""
 
         if [[ -f "$txt" ]] ; then
-	    # unencrypted note. directly perform grep
+            # unencrypted note. directly perform grep
             result=`grep -i "$2" "$txt"`
         elif [[ -f "$enc" ]] ; then
-	    # encrypted note. decrypt and perform grep on piped data
+            # encrypted note. decrypt and perform grep on piped data
             result=`gpg -d "$enc" 2>/dev/null | tar -xO "./$d.txt" | grep -i "$2"`
         else
             echo "$d: no note for this date"
         fi
         
         if [[ ${#result} -gt 0 ]] ; then
-	    # show result if there's a match
+            # show result if there's a match
             echo "match at $d:"
             echo $result
             echo "---"
@@ -297,6 +297,4 @@ fi
 if [[ "$1" == "last" ]] ; then
     echo "`ls -1 memexdb/ | tail -n 1`"
 fi
-
-
 
