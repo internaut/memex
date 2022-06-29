@@ -37,3 +37,7 @@ All data is stored in the sub-folder "memexdb", where each day has a folder name
 - `./memex last`: show the date of the last note that was taken
 - `./memex encrypt`: encrypt all note data in the memexdb that is not encrypted so far; the unencrypted notes must be named in the "YYYY-MM-DD.txt" format inside the respective days' folders; if all data is encrypted the command will not report anything
 
+## License
+
+This project is licensed under MIT License. See *LICENSE* file for the full text.
+
