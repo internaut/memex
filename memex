@@ -1,0 +1,302 @@
+#!/bin/bash
+#
+# memex – encrypted chronological note keeping tool for unix CLIs
+#
+# written by Markus Konrad <post@mkonrad.net>, June 2022
+#
+
+
+IDENT=""        # set the identity (e-mail) used for encryption
+TMPDIR="$HOME"  # set the temporary folder
+
+
+### sub-routines ###
+
+
+# safe directory removal. args: directory to remove
+saferm() {
+    if [[ $# -ne 1 ]] ; then
+        exit 1
+    fi
+    
+    safepath="$TMPDIR"
+    abspath=`readlink -f $1`
+    n=${#safepath}
+    trunc=${abspath::$n}
+    
+    #echo "$trunc"
+    #echo "$safepath"
+    
+    if [[ "$trunc" = "$safepath" ]] ; then
+        echo "will remove temporary folder $tmp"
+        #rm -rfI "$abspath"
+        rm -rf "$abspath"
+    fi
+}
+
+
+# temporary path for a date's note folder. args: date
+tmppath() {
+    echo "$TMPDIR/$1"
+}
+
+
+# temporary path for a date's note file. args: date
+tmptxtpath() {
+    echo "$TMPDIR/$1/$1.txt"
+}
+
+
+# path to date's encrypted data file. args: date
+encrfilepath() {
+    echo `folderpath "$1"`/$1.tar.gpg
+}
+
+
+# path to a date's folder. args: date
+folderpath() {
+    echo "memexdb/$1"
+}
+
+
+# path to a date's note file. args: date
+txtpath() {
+    echo "memexdb/$1/$1.txt"
+}
+
+
+# remember a date. args: date
+# decrypt data for date to temporary location, show the note,
+# open attachments folder if they exist and finally remove
+# files at temporary location again
+remember() {
+    # convert date string to Y-M-D format
+    d=`date --date "$1" +%F` || exit 1
+    # decrypt data for that date
+    decrypt "$d" || return 1
+    
+    folder=`tmppath "$d"`
+    file=`tmptxtpath "$d"`
+    dateformatted=`date --date "$1" +"%a, %b %d %Y"`
+
+    if [[ $dateformatted == "" ]] ; then
+        exit 1
+    fi
+    
+    # count non-text files in date's note data
+    n_nontxt=`ls -1 "$folder" | grep -v '.txt$' | wc -l`
+    
+    if [[ -f $file ]] ; then
+	# there's a note for that date
+        echo "remember $1: $dateformatted"
+        read
+        if [[ $n_nontxt -gt 0 ]] ; then
+	    # there are attachments for that date
+            xdg-open "$folder"
+        fi
+        less $file
+    fi
+    
+    # remove temporary files again
+    tmp=`tmppath "$d"`
+    saferm "$tmp"
+
+    return 0
+}
+
+
+# encrypt note data for a date. args: date
+# take note data from temporary location and encrypt that to store
+# in the "memexdb".
+encrypt() {
+    if [[ $# -ne 1 ]] ; then
+        echo "missing argument to function encrypt: date"
+        exit 1
+    fi
+    
+    # get temporary location and path to encrypted file
+    tmp=`tmppath "$1"`
+    mkdir `folderpath "$1"`
+    final=`encrfilepath "$1"`
+    
+    # perform encryption
+    encrypt_inplace "$tmp" "$final"
+    
+    # remove temporary folder
+    saferm "$tmp"
+}
+
+
+# encrypt all files in first arg to file given as second arg.
+# args: folder to encrypt, encrypted output file
+encrypt_inplace() {
+    if [[ $# -ne 2 ]] ; then
+        echo "missing arguments to function encrypt: folder to encrypt, output file"
+        exit 1
+    fi
+
+    tar --exclude='*.tar.gpg' -cf - -C "$1/" . | gpg --encrypt --sign -r $IDENT > "$2" || exit 1
+}
+
+
+# decrypt all files for a date. args: date
+# can also handle unencrypted data
+decrypt() {
+    if [[ $# -ne 1 ]] ; then
+        echo "missing argument to function decrypt: date"
+        exit 1
+    fi
+    
+    # get temporary location
+    tmp=`tmppath "$1"`
+
+    # get encrypted file
+    final=`encrfilepath "$1"`
+
+    if [[ -f "$final" ]] ; then
+	# encrypted file exists, decrypt it to temp. location
+        echo "decrypting $final..."
+    	mkdir `tmppath "$1"`
+        gpg -d "$final" 2>/dev/null | tar -x -C $tmp || exit 1
+    else
+	# encrypted file doesn't exist
+        final=`txtpath "$1"`
+	if [[ -f "$final" ]] ; then
+		# unencrypted note data exists, copy it to temp. location
+	        echo "using unencrypted file $final"
+    		mkdir `tmppath "$1"`
+        	cp "$final" "$tmp"
+	else
+		echo "$1: no notes for that date"
+		return 1
+	fi
+    fi
+
+    return 0
+}
+
+
+### script entry points ###
+
+
+# no command or "write [date] [attach]":
+# create a new note for "date" or today (default)
+# if "attach" is given, open folder to add attachment files
+if [[ $# -eq 0 || "$1" == "write" ]] ; then
+    if [[ $# -gt 1 ]] ; then
+	# date is given
+        d=`date --date "$2" +%F` || exit 1
+        if [[ $d == "" ]] ; then
+            exit 1
+        fi
+    else
+	# no date is given, use today's date
+        d=`date +%F` || exit 1
+    fi
+    
+    # get paths
+    txt=`txtpath "$d"`
+    enc=`encrfilepath "$d"`
+    tmp=`tmppath "$d"`
+    tmptxt=`tmptxtpath "$d"`
+    
+    # create temporary location
+    mkdir -p "$tmp"
+    
+    # open temp. location if "attach" is given
+    if [[ $# -eq 3 && $3 == "attach" ]] ; then
+        xdg-open "$tmp"
+    fi
+    
+    if [[ -f $txt ]] ; then
+	# there's already an unencrypted note existing, move it for editing
+        mv "$txt" "$tmptxt"
+    elif [[ -f $enc ]] ; then
+	# there's already encrypted data existing, decrypt it for editing
+        echo "decrypting $enc..."
+        gpg -d "$enc" 2>/dev/null | tar -x -C $tmp || exit 1
+    fi
+    
+    # edit the note or create a new note for that date
+    vim `tmptxtpath "$d"`
+
+    # encrypt the note's data
+    encrypt $d
+fi
+
+
+# "read [date]" command. if date is given, read the note at that date.
+# else read notes for a sequence of past dates. 
+if [[ "$1" == "read" ]] ; then
+    if [[ $# -eq 2 ]] ; then
+	# read note at given date
+        remember "$2"
+    else
+	# read notes for a sequence of past dates
+        remember "yesterday"
+        remember "1 week ago"
+        remember "2 week ago"
+        remember "4 weeks ago" 
+        remember "12 weeks ago"
+        remember "24 weeks ago"
+        remember "1 year ago" 
+        remember "2 years ago" 
+        remember "5 years ago" 
+    fi
+fi
+
+
+# "encrypt" command. encrypt all note data in the memexdb that is
+# not encrypted so far.
+if [[ "$1" == "encrypt" ]] ; then
+    for d in `ls memexdb/`; do
+        folder=`folderpath $d`
+        txt=`txtpath $d`
+        encrtmp=`tmppath "$d.tar.gpg"`
+        final=`encrfilepath $d`
+        if [[ -f "$txt" ]] ; then
+            echo "encrypting data for date $d ..."
+            encrypt_inplace "$folder" "$encrtmp"
+            rm $folder/*
+            mv "$encrtmp" "$final"
+        fi
+    done
+fi
+
+
+# "search <pattern>" command. search (encrypted) notes for a given grep pattern.
+if [[ $# -eq 2 && "$1" == "search" ]] ; then
+    for d in `ls memexdb/`; do
+	# iterate through dates $d
+
+        txt=`txtpath $d`
+        enc=`encrfilepath $d`
+        result=""
+
+        if [[ -f "$txt" ]] ; then
+	    # unencrypted note. directly perform grep
+            result=`grep -i "$2" "$txt"`
+        elif [[ -f "$enc" ]] ; then
+	    # encrypted note. decrypt and perform grep on piped data
+            result=`gpg -d "$enc" 2>/dev/null | tar -xO "./$d.txt" | grep -i "$2"`
+        else
+            echo "$d: no note for this date"
+        fi
+        
+        if [[ ${#result} -gt 0 ]] ; then
+	    # show result if there's a match
+            echo "match at $d:"
+            echo $result
+            echo "---"
+        fi
+    done
+fi
+
+
+# "last" command. show the date of the last note that was taken.
+if [[ "$1" == "last" ]] ; then
+    echo "`ls -1 memexdb/ | tail -n 1`"
+fi
+
+
+
