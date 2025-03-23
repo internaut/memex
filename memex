@@ -56,15 +56,20 @@ encrfilepath() {
 
 # path to a date's folder. args: date
 folderpath() {
-    echo "memexdb/$1"
+    year=${1::4}
+    echo "memexdb/$year/$1"
 }
 
 
 # path to a date's note file. args: date
 txtpath() {
-    echo "memexdb/$1/$1.txt"
+    echo `folderpath "$1"`"/$1.txt"
 }
 
+# path to a date's note file as .md file. args: date
+mdpath() {
+    echo `folderpath "$1"`"/$1.md"
+}
 
 # remember a date. args: date
 # decrypt data for date to temporary location, show the note,
@@ -117,7 +122,7 @@ encrypt() {
     
     # get temporary location and path to encrypted file
     tmp=`tmppath "$1"`
-    mkdir `folderpath "$1"`
+    mkdir -p `folderpath "$1"`
     final=`encrfilepath "$1"`
     
     # perform encryption
@@ -136,7 +141,7 @@ encrypt_inplace() {
         exit 1
     fi
 
-    tar --exclude='*.tar.gpg' -cf - -C "$1/" . | gpg --encrypt --sign -r $IDENT > "$2" || exit 1
+    tar --exclude='*.tar.gpg' -cf - -C "$1/" . | gpg --encrypt --sign -r "$IDENT" > "$2" || exit 1
 }
 
 
@@ -253,8 +258,15 @@ if [[ "$1" == "encrypt" ]] ; then
     for d in `ls memexdb/`; do
         folder=`folderpath $d`
         txt=`txtpath $d`
+        md=`mdpath $d`
         encrtmp=`tmppath "$d.tar.gpg"`
         final=`encrfilepath $d`
+        
+        if [[ -f "$md" ]] ; then
+	    echo "found .md file; will rename to .txt file"
+            mv "$md" "$txt"
+        fi
+        
         if [[ -f "$txt" ]] ; then
             echo "encrypting data for date $d ..."
             encrypt_inplace "$folder" "$encrtmp"
@@ -267,27 +279,29 @@ fi
 
 # "search <pattern>" command. search (encrypted) notes for a given grep pattern.
 if [[ $# -eq 2 && "$1" == "search" ]] ; then
-    for d in `ls memexdb/`; do
-        # iterate through dates $d
-        txt=`txtpath $d`
-        enc=`encrfilepath $d`
-        result=""
+    for d in `ls -r memexdb/*`; do
+        if [[ "$d" =~ ^[0-9]+- ]] ; then
+            # iterate through dates $d
+            txt=`txtpath $d`
+            enc=`encrfilepath $d`
+            result=""
 
-        if [[ -f "$txt" ]] ; then
-            # unencrypted note. directly perform grep
-            result=`grep -i "$2" "$txt"`
-        elif [[ -f "$enc" ]] ; then
-            # encrypted note. decrypt and perform grep on piped data
-            result=`gpg -d "$enc" 2>/dev/null | tar -xO "./$d.txt" | grep -i "$2"`
-        else
-            echo "$d: no note for this date"
-        fi
+            if [[ -f "$txt" ]] ; then
+                # unencrypted note. directly perform grep
+                result=`grep -i "$2" "$txt"`
+            elif [[ -f "$enc" ]] ; then
+                # encrypted note. decrypt and perform grep on piped data
+                result=`gpg -d "$enc" 2>/dev/null | tar -xO "./$d.txt" | grep -i "$2"`
+            else
+                echo "$d: no note for this date"
+            fi
         
-        if [[ ${#result} -gt 0 ]] ; then
-            # show result if there's a match
-            echo "match at $d:"
-            echo $result
-            echo "---"
+            if [[ ${#result} -gt 0 ]] ; then
+                # show result if there's a match
+                echo "match at $d:"
+                echo $result
+                echo "---"
+            fi
         fi
     done
 fi

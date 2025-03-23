@@ -27,7 +27,7 @@ Memex allows to periodically review past notes by retrieving notes from previous
 
 Interact with `memex` using the commands described below. `<...>` denotes required arguments, `[...]`  denotes optional arguments. The `date` argument is very important. It allows you to specify for which date you want to read or write a note. The way you specify that date is very flexible: You can specify the day in "year-month-day" format (e.g. "2022-06-29") or in a relative way, e.g. "2 days ago", "3 weeks ago" or "last friday". See the [documentation for the Unix `date` utility](https://www.gnu.org/software/coreutils/manual/html_node/Date-input-formats.html) for more information.
 
-All data is stored in the sub-folder "memexdb", where each day has a folder named in the "year-month-day" (YYYY-MM-DD) format. Inside these folders the encrypted data is stored as `YYYY-MM-DD.tar.gpg`. The encrypted data contains at least one text note file named `YYYY-MM-DD.txt` and optional attachment files.
+All data is stored in the sub-folder "memexdb", where each day has a folder named in the "year-month-day" (YYYY-MM-DD) format inside a folder for the year. Inside these folders the encrypted data is stored as `YYYY-MM-DD.tar.gpg`. The encrypted data contains at least one text note file named `YYYY-MM-DD.txt` and optional attachment files.
 
 ### Commands
 
